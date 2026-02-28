@@ -386,9 +386,23 @@ async function fetchComp(eventId, compId) {
 
   const url = `${API_BASE}/events/${eventId}/competitions/${compId}/results/?inSeconds=1`;
 
+  // Helper: fetch with timeout
+  async function timedFetch(fetchUrl, ms = 8000) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const r = await fetch(fetchUrl, { signal: ctrl.signal, headers: { Accept: "application/json" } });
+      clearTimeout(timer);
+      return r;
+    } catch (e) {
+      clearTimeout(timer);
+      throw e;
+    }
+  }
+
   // Try direct
   try {
-    const r = await fetch(url, { headers: { Accept: "application/json" } });
+    const r = await timedFetch(url, 5000);
     if (r.ok) { const d = await r.json(); CACHE[key] = { data: d, ts: Date.now() }; return d; }
   } catch (_) {}
 
@@ -400,7 +414,7 @@ async function fetchComp(eventId, compId) {
   ];
   for (const p of proxies) {
     try {
-      const r = await fetch(p);
+      const r = await timedFetch(p, 8000);
       if (!r.ok) continue;
       const txt = await r.text();
       if (!txt || txt.length < 10) continue;
@@ -1728,14 +1742,17 @@ function bindEvents() {
 function startPolling() {
   stopPolling();
   async function tick() {
-    const eventId = LIVE_URLS[state.module]?.eventId;
-    if (eventId) {
-      // Invalidate cache for comps that might have new data
-      for (let c = 1; c <= 8; c++) delete CACHE[`${eventId}_${c}`];
-      await fetchAllComps(eventId);
+    try {
+      const eventId = LIVE_URLS[state.module]?.eventId;
+      if (eventId) {
+        for (let c = 1; c <= 8; c++) delete CACHE[`${eventId}_${c}`];
+        await fetchAllComps(eventId);
+      }
+      loadData();
+      render();
+    } catch (e) {
+      console.warn("[NK] Poll error:", e);
     }
-    loadData();
-    render();
     pollTimer = setTimeout(tick, POLL_MS);
   }
   pollTimer = setTimeout(tick, POLL_MS);
@@ -1747,10 +1764,18 @@ function stopPolling() {
 
 async function switchModule() {
   stopPolling();
-  const eventId = LIVE_URLS[state.module]?.eventId;
-  if (eventId) await fetchAllComps(eventId);
+  // Render immediately with whatever we have
   loadData();
   render();
+  // Then fetch new data
+  try {
+    const eventId = LIVE_URLS[state.module]?.eventId;
+    if (eventId) await fetchAllComps(eventId);
+    loadData();
+    render();
+  } catch (e) {
+    console.warn("[NK] Switch error:", e);
+  }
   startPolling();
 }
 
@@ -1762,14 +1787,25 @@ async function boot() {
   loadManual();
   bindEvents();
 
-  // Initial fetch
-  const eventId = LIVE_URLS[state.module]?.eventId;
-  if (eventId) await fetchAllComps(eventId);
-
+  // Render immediately with participant baseline (no live data yet)
   loadData();
   render();
-  startPolling();
+  console.log("[NK] Initial render done (no live data yet)");
 
+  // Then fetch live data in background
+  try {
+    const eventId = LIVE_URLS[state.module]?.eventId;
+    if (eventId) {
+      await fetchAllComps(eventId);
+      loadData();
+      render();
+      console.log("[NK] Live data loaded ✅");
+    }
+  } catch (e) {
+    console.warn("[NK] Fetch error:", e);
+  }
+
+  startPolling();
   console.log("[NK] Boot complete ✅");
 }
 
