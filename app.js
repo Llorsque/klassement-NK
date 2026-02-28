@@ -374,8 +374,8 @@ function getCfg() {
 // ── 7. DATA FETCHING ────────────────────────────────────
 
 const CACHE = {};          // "eventId_compId" → { data, ts }
-const CACHE_TTL = 45_000;  // 45 seconds
-const POLL_MS = 45_000;    // poll every 45s
+const CACHE_TTL = 12_000;  // 12 seconds
+const POLL_MS = 15_000;    // poll every 15s
 let pollTimer = null;
 let lastFetchLog = [];
 
@@ -441,16 +441,16 @@ async function fetchAllComps(eventId) {
   for (const c of missing) {
     const result = await fetchComp(eventId, c);
     if (!result) failed.push(c);
-    await sleep(600); // 600ms between requests
+    await sleep(300); // 300ms between requests
   }
 
   // Retry failures once
   if (failed.length > 0) {
     console.log(`[NK] Retrying failed comps [${failed.join(",")}]`);
-    await sleep(1500);
+    await sleep(800);
     for (const c of failed) {
       await fetchComp(eventId, c);
-      await sleep(800);
+      await sleep(400);
     }
   }
 
@@ -520,10 +520,11 @@ function getManual(mod, gen, dk, name) {
 // ── 9. DATA PROCESSING ─────────────────────────────────
 
 function loadData() {
-  const cfg = getCfg();
-  const participants = PARTICIPANTS[state.module]?.[state.gender] ?? [];
-  const eventId = LIVE_URLS[state.module]?.eventId;
-  const compMap = LIVE_URLS[state.module]?.[state.gender] ?? {};
+  try {
+    const cfg = getCfg();
+    const participants = PARTICIPANTS[state.module]?.[state.gender] ?? [];
+    const eventId = LIVE_URLS[state.module]?.eventId;
+    const compMap = LIVE_URLS[state.module]?.[state.gender] ?? {};
 
   // Build athlete list from participants
   const athletes = participants.map(p => ({
@@ -620,6 +621,12 @@ function loadData() {
   state.standings = computeStandings(athletes, cfg.distances);
 
   console.log(`[NK] ${state.module}/${state.gender}: ${liveCount} live, ${manualCount} manual, ${athletes.length} athletes`);
+  } catch (e) {
+    console.error("[NK] LOAD_DATA ERROR:", e);
+    // Ensure state.standings is never null
+    state.data = { athletes: [] };
+    state.standings = { all: [], full: [], partial: [] };
+  }
 }
 
 function computeAthletePoints(a, distances) {
@@ -744,7 +751,9 @@ function showToast(msg, ms = 2500) {
 
 function updateStatus() {
   const badge = el.statusBadge;
+  if (!badge) return;
   const txt = badge.querySelector(".status-badge__text");
+  if (!txt) return;
   badge.className = `status-badge status-badge--${dataSource}`;
   txt.textContent = dataSource === "live" ? "Live" : dataSource === "manual" ? "Handmatig" : "Wachten";
 }
@@ -1654,43 +1663,50 @@ function renderViewButtons() {
 }
 
 function render() {
-  const cfg = getCfg();
-  setActive(el.moduleTabs, "module", state.module);
-  setActive(el.genderTabs, "gender", state.gender);
-  saveHash();
-  updateStatus();
-  renderViewButtons();
+  try {
+    const cfg = getCfg();
+    setActive(el.moduleTabs, "module", state.module);
+    setActive(el.genderTabs, "gender", state.gender);
+    saveHash();
+    updateStatus();
+    renderViewButtons();
 
-  el.h2hForm.hidden = state.view !== "headToHead";
-  el.viewMeta.textContent = `${MODULE_CONFIG[state.module].label} · ${cfg.label}`;
+    if (el.h2hForm) el.h2hForm.hidden = state.view !== "headToHead";
+    if (el.viewMeta) el.viewMeta.textContent = `${MODULE_CONFIG[state.module].label} · ${cfg.label}`;
 
-  if (state.view === "distance") {
-    if (!state.distKey) state.distKey = cfg.distances[0]?.key;
-    return renderDistance();
+    if (state.view === "distance") {
+      if (!state.distKey) state.distKey = cfg.distances[0]?.key;
+      return renderDistance();
+    }
+    if (state.view === "headToHead") return renderH2H();
+    if (state.view === "overzicht") return renderOverzicht();
+    if (state.view === "kwalificatie") return renderKwalificatie();
+    return renderKlassement();
+  } catch (e) {
+    console.error("[NK] RENDER ERROR:", e);
+    if (el.contentArea) el.contentArea.innerHTML = `<div style="color:#f87171;padding:20px;font-family:monospace">
+      <h3>⚠️ Render Error</h3><pre>${e.message}\n${e.stack}</pre>
+    </div>`;
   }
-  if (state.view === "headToHead") return renderH2H();
-  if (state.view === "overzicht") return renderOverzicht();
-  if (state.view === "kwalificatie") return renderKwalificatie();
-  return renderKlassement();
 }
 
 // ── 22. EVENT BINDING ───────────────────────────────────
 
 function bindEvents() {
   // Module tabs
-  el.moduleTabs.addEventListener("click", e => {
+  el.moduleTabs?.addEventListener("click", e => {
     const btn = e.target.closest(".tab");
     if (btn?.dataset.module) { state.module = btn.dataset.module; switchModule(); }
   });
 
   // Gender tabs
-  el.genderTabs.addEventListener("click", e => {
+  el.genderTabs?.addEventListener("click", e => {
     const btn = e.target.closest(".tab");
     if (btn?.dataset.gender) { state.gender = btn.dataset.gender; loadData(); render(); }
   });
 
   // View buttons
-  el.viewButtons.addEventListener("click", e => {
+  el.viewButtons?.addEventListener("click", e => {
     const btn = e.target.closest(".tab");
     if (!btn) return;
     state.view = btn.dataset.view;
@@ -1782,18 +1798,21 @@ async function switchModule() {
 // ── 24. BOOT ────────────────────────────────────────────
 
 async function boot() {
-  cacheEls();
-  loadHash();
-  loadManual();
-  bindEvents();
-
-  // Render immediately with participant baseline (no live data yet)
-  loadData();
-  render();
-  console.log("[NK] Initial render done (no live data yet)");
-
-  // Then fetch live data in background
   try {
+    cacheEls();
+    console.log("[NK] Elements cached:", Object.keys(el).filter(k => el[k]).join(", "));
+    console.log("[NK] Missing elements:", Object.keys(el).filter(k => !el[k]).join(", ") || "none");
+    
+    loadHash();
+    loadManual();
+    bindEvents();
+
+    // Render immediately with participant baseline (no live data yet)
+    loadData();
+    render();
+    console.log("[NK] Initial render done ✅");
+
+    // Then fetch live data in background
     const eventId = LIVE_URLS[state.module]?.eventId;
     if (eventId) {
       await fetchAllComps(eventId);
@@ -1802,11 +1821,16 @@ async function boot() {
       console.log("[NK] Live data loaded ✅");
     }
   } catch (e) {
-    console.warn("[NK] Fetch error:", e);
+    console.error("[NK] BOOT ERROR:", e);
+    // Emergency render
+    const ca = document.getElementById("contentArea");
+    if (ca) ca.innerHTML = `<div style="color:#f87171;padding:20px;font-family:monospace">
+      <h3>⚠️ Boot Error</h3><pre>${e.message}\n${e.stack}</pre>
+    </div>`;
   }
 
   startPolling();
-  console.log("[NK] Boot complete ✅");
+  console.log("[NK] Polling started");
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
