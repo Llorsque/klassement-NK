@@ -266,11 +266,11 @@ function parseTime(str) {
   if (mc) return parseFloat(mc[1]) * 60 + parseFloat(mc[2]);
   // plain seconds "ss.xx"
   const n = parseFloat(s);
-  return isFinite(n) && n > 0 ? n : null;
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function fmtTime(sec) {
-  if (!isFinite(sec) || sec < 0) return "—";
+  if (!Number.isFinite(sec) || sec < 0) return "—";
   const mm = Math.floor(sec / 60);
   const ss = sec - mm * 60;
   const str = ss.toFixed(2).padStart(5, "0");
@@ -278,7 +278,7 @@ function fmtTime(sec) {
 }
 
 function fmtTimeDelta(sec) {
-  if (!isFinite(sec)) return "—";
+  if (!Number.isFinite(sec)) return "—";
   const sign = sec < 0 ? "-" : "+";
   const abs = Math.abs(sec);
   const mm = Math.floor(abs / 60);
@@ -291,7 +291,7 @@ function fmtTimeDelta(sec) {
 function fmtRawTime(t) {
   if (!t || t === "—") return "—";
   const sec = parseTime(t);
-  if (!isFinite(sec)) return t;
+  if (!Number.isFinite(sec)) return t;
   const decs = t.includes(".") ? Math.min(t.split(".").pop().length, 3) : 2;
   const mm = Math.floor(sec / 60);
   const ss = sec - mm * 60;
@@ -300,7 +300,7 @@ function fmtRawTime(t) {
 }
 
 function fmtPts(pts) {
-  return isFinite(pts) ? pts.toFixed(3) : "—";
+  return Number.isFinite(pts) ? pts.toFixed(3) : "—";
 }
 
 function truncDec(n, d) {
@@ -629,7 +629,7 @@ function computeAthletePoints(a, distances) {
 
   for (const d of distances) {
     const sec = a.seconds[d.key];
-    if (isFinite(sec)) {
+    if (Number.isFinite(sec)) {
       const p = truncDec(sec / d.divisor, 3);
       pts[d.key] = p;
       totalPoints += p;
@@ -645,7 +645,7 @@ function sumPartial(a, distances) {
   let s = 0, c = 0;
   for (const d of distances) {
     const p = a.points?.[d.key];
-    if (isFinite(p)) { s += p; c++; }
+    if (Number.isFinite(p)) { s += p; c++; }
   }
   return c > 0 ? truncDec(s, 3) : null;
 }
@@ -674,13 +674,13 @@ function computeStandings(athletes, distances) {
   const leader = computed[0]?.totalPoints ?? sumPartial(computed[0], distances);
   for (const a of computed) {
     const pts = a.totalPoints ?? sumPartial(a, distances);
-    a.pointsDelta = (isFinite(leader) && isFinite(pts) && a.completedCount > 0)
+    a.pointsDelta = (Number.isFinite(leader) && Number.isFinite(pts) && a.completedCount > 0)
       ? truncDec(pts - leader, 3) : null;
   }
 
   // Per-distance rankings
   for (const d of distances) {
-    const sorted = computed.filter(a => isFinite(a.seconds?.[d.key]))
+    const sorted = computed.filter(a => Number.isFinite(a.seconds?.[d.key]))
       .sort((a, b) => a.seconds[d.key] - b.seconds[d.key]);
     sorted.forEach((a, i) => {
       if (!a.distRanks) a.distRanks = {};
@@ -784,12 +784,12 @@ function renderKlassement() {
 
     let deltaHtml = "";
     if (a.pointsDelta === 0) deltaHtml = '<span class="delta delta--leader">Leader</span>';
-    else if (isFinite(a.pointsDelta) && nextDist) {
+    else if (Number.isFinite(a.pointsDelta) && nextDist) {
       deltaHtml = `<span class="delta">${fmtTimeDelta(a.pointsDelta * nextDist.divisor)}</span>`;
     }
 
     const pts = a.totalPoints ?? sumPartial(a, distances);
-    const ptsStr = isFinite(pts) ? pts.toFixed(3) : "—";
+    const ptsStr = Number.isFinite(pts) ? pts.toFixed(3) : "—";
     const dim = a.totalPoints === null && a.completedCount > 0 ? ' style="opacity:.5"' : "";
 
     return `<tr class="${podCls(a.rank)}">
@@ -839,7 +839,7 @@ function renderDistance() {
   for (const a of standings.all) {
     const t = a.times?.[dist.key];
     const sec = a.seconds?.[dist.key];
-    if (t && a.status?.[dist.key] === "OK" && isFinite(sec))
+    if (t && a.status?.[dist.key] === "OK" && Number.isFinite(sec))
       withTime.push({ name: a.name, time: t, sec, pb: a.pb?.[dist.key] });
     else
       withoutTime.push({ name: a.name });
@@ -847,7 +847,7 @@ function renderDistance() {
 
   withTime.sort((a, b) => a.sec - b.sec);
   const fastest = withTime[0]?.sec ?? null;
-  withTime.forEach((r, i) => { r.rank = i + 1; r.delta = isFinite(fastest) ? r.sec - fastest : null; });
+  withTime.forEach((r, i) => { r.rank = i + 1; r.delta = Number.isFinite(fastest) ? r.sec - fastest : null; });
 
   if (startlist) {
     const order = new Map();
@@ -858,7 +858,7 @@ function renderDistance() {
   let rowsHtml = "";
   for (const r of withTime) {
     const dStr = r.delta === 0 ? '<span class="delta delta--leader">Snelst</span>'
-      : isFinite(r.delta) ? `<span class="delta">${fmtTimeDelta(r.delta)}</span>` : "";
+      : Number.isFinite(r.delta) ? `<span class="delta">${fmtTimeDelta(r.delta)}</span>` : "";
     rowsHtml += `<tr class="${podCls(r.rank)}">
       <td>${rankHtml(r.rank)}</td>
       <td><span class="athlete-name" data-name="${esc(r.name)}">${esc(r.name)}</span></td>
@@ -925,13 +925,13 @@ function buildSidebar(distances, standings) {
     const pts = sumPartial(a, distances);
     let deltaStr = "";
     if (rk === 1) deltaStr = '<span class="delta delta--leader">Leader</span>';
-    else if (isFinite(pts) && isFinite(leaderPts) && nextDist) {
+    else if (Number.isFinite(pts) && Number.isFinite(leaderPts) && nextDist) {
       deltaStr = `<span class="delta">${fmtTimeDelta((pts - leaderPts) * nextDist.divisor)}</span>`;
     }
     return `<tr>
       <td style="width:28px;font-weight:700;color:var(--text-dim)">${rk}</td>
       <td><span class="athlete-name" data-name="${esc(a.name)}" style="font-size:12px">${esc(a.name)}</span></td>
-      <td class="mono" style="font-size:11px">${isFinite(pts) ? pts.toFixed(3) : "—"}</td>
+      <td class="mono" style="font-size:11px">${Number.isFinite(pts) ? pts.toFixed(3) : "—"}</td>
       <td style="font-size:11px">${deltaStr}</td>
     </tr>`;
   }).join("");
@@ -988,12 +988,12 @@ function renderH2H() {
     const secA = rA.seconds?.[d.key], secB = rB.seconds?.[d.key];
     const tA = rA.times?.[d.key] ?? "—", tB = rB.times?.[d.key] ?? "—";
     let clsA = "", clsB = "";
-    if (isFinite(secA) && isFinite(secB)) {
+    if (Number.isFinite(secA) && Number.isFinite(secB)) {
       if (secA < secB) { clsA = "mirror-cell--win"; clsB = "mirror-cell--lose"; }
       else if (secB < secA) { clsB = "mirror-cell--win"; clsA = "mirror-cell--lose"; }
     }
     let diffHtml = "";
-    if (isFinite(secA) && isFinite(secB)) {
+    if (Number.isFinite(secA) && Number.isFinite(secB)) {
       const diff = secA - secB;
       if (diff < 0) diffHtml = `<span class="mirror-center__diff mirror-center__diff--neg">◀ ${Math.abs(diff).toFixed(2)}s</span>`;
       else if (diff > 0) diffHtml = `<span class="mirror-center__diff mirror-center__diff--pos">${diff.toFixed(2)}s ▶</span>`;
@@ -1008,12 +1008,12 @@ function renderH2H() {
 
   const totA = sumPartial(rA, cfg.distances), totB = sumPartial(rB, cfg.distances);
   let totClsA = "", totClsB = "";
-  if (isFinite(totA) && isFinite(totB)) {
+  if (Number.isFinite(totA) && Number.isFinite(totB)) {
     if (totA < totB) { totClsA = "mirror-cell--win"; totClsB = "mirror-cell--lose"; }
     else if (totB < totA) { totClsB = "mirror-cell--win"; totClsA = "mirror-cell--lose"; }
   }
   let totDiff = "";
-  if (isFinite(totA) && isFinite(totB)) {
+  if (Number.isFinite(totA) && Number.isFinite(totB)) {
     const d = totA - totB;
     totDiff = d === 0 ? "" : `<span class="mirror-center__diff" style="font-size:11px">${d > 0 ? "+" : ""}${d.toFixed(3)} pnt</span>`;
   }
@@ -1105,7 +1105,7 @@ function renderOverzicht() {
     const sourceAthletes = allAthletes.filter(a => a.source.includes(MODULE_CONFIG[mod].label) && a.source.includes(gen === "v" ? "♀" : "♂"));
 
     for (const d of cfg2.distances) {
-      const sorted = sourceAthletes.filter(a => isFinite(a.seconds?.[d.key]))
+      const sorted = sourceAthletes.filter(a => Number.isFinite(a.seconds?.[d.key]))
         .sort((a, b) => a.seconds[d.key] - b.seconds[d.key])
         .slice(0, 3);
       if (sorted.length === 0) continue;
@@ -1210,7 +1210,7 @@ function renderKwalificatie() {
     for (const a of athletes) Object.assign(a, computeAthletePoints(a, cfg2.distances));
 
     // Determine if 3 distances completed for definitive
-    const completedDists = q.first3.filter(dk => athletes.some(a => isFinite(a.seconds?.[dk])));
+    const completedDists = q.first3.filter(dk => athletes.some(a => Number.isFinite(a.seconds?.[dk])));
     const useFirst3 = completedDists.length >= 3;
     const klassDists = useFirst3 ? q.first3 : q.first2;
     const modeLabel = useFirst3 ? "Definitief (na 3 afstanden)" : "Voorlopig (schaduwklassement)";
@@ -1220,13 +1220,13 @@ function renderKwalificatie() {
       let sum = 0, count = 0;
       for (const dk of klassDists) {
         const p = a.points?.[dk];
-        if (isFinite(p)) { sum += p; count++; }
+        if (Number.isFinite(p)) { sum += p; count++; }
       }
       return { ...a, klassSum: count === klassDists.length ? truncDec(sum, 3) : null };
     }).filter(a => a.klassSum !== null).sort((a, b) => a.klassSum - b.klassSum);
 
     // Distance ranking on qualDist
-    const withDist = athletes.filter(a => isFinite(a.seconds?.[q.qualDist]))
+    const withDist = athletes.filter(a => Number.isFinite(a.seconds?.[q.qualDist]))
       .sort((a, b) => a.seconds[q.qualDist] - b.seconds[q.qualDist]);
 
     const klassTop8 = new Set(withKlass.slice(0, 8).map(a => a.name));
@@ -1319,7 +1319,7 @@ function openAthletePopup(name) {
   const ptsDisplay = a.totalPoints ?? sumPartial(a, distances);
   html += `<div class="kpi-row">
     <div class="kpi-card"><div class="kpi-card__label">Klassement</div><div class="kpi-card__value">#${a.rank ?? "—"}</div></div>
-    <div class="kpi-card"><div class="kpi-card__label">Punten</div><div class="kpi-card__value">${isFinite(ptsDisplay) ? ptsDisplay.toFixed(3) : "—"}</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Punten</div><div class="kpi-card__value">${Number.isFinite(ptsDisplay) ? ptsDisplay.toFixed(3) : "—"}</div></div>
     <div class="kpi-card"><div class="kpi-card__label">PB's</div><div class="kpi-card__value">${pbCount} <span style="font-size:12px;color:var(--text-dim)">${skated.length > 0 ? Math.round(pbCount / skated.length * 100) + "%" : ""}</span></div>
       <div class="kpi-card__sub">${pbCount} van ${skated.length} ritten</div></div>
     <div class="kpi-card"><div class="kpi-card__label">Afstanden</div><div class="kpi-card__value">${skated.length}/${distances.length}</div></div>
@@ -1329,7 +1329,7 @@ function openAthletePopup(name) {
   if (skated.length > 0) {
     const leaderTimes = {};
     for (const d of distances) {
-      const best = state.standings.all.filter(x => isFinite(x.seconds?.[d.key]))
+      const best = state.standings.all.filter(x => Number.isFinite(x.seconds?.[d.key]))
         .sort((x, y) => x.seconds[d.key] - y.seconds[d.key])[0];
       leaderTimes[d.key] = best?.seconds?.[d.key] ?? null;
     }
@@ -1339,12 +1339,12 @@ function openAthletePopup(name) {
         <tbody>${skated.map(d => {
           const pos = a.distRanks?.[d.key];
           const leader = leaderTimes[d.key];
-          const delta = isFinite(a.seconds[d.key]) && isFinite(leader) ? a.seconds[d.key] - leader : null;
+          const delta = Number.isFinite(a.seconds[d.key]) && Number.isFinite(leader) ? a.seconds[d.key] - leader : null;
           return `<tr class="${podCls(pos)}">
             <td>${esc(d.label)}</td>
             <td class="mono">${fmtRawTime(a.times[d.key])}${pbBadge(a.pb?.[d.key])}</td>
             <td>${pos ? rankHtml(pos) : "—"}</td>
-            <td>${delta === 0 ? '<span class="delta delta--leader">Snelst</span>' : isFinite(delta) ? `<span class="delta">+${fmtTimeDelta(delta).slice(1)}</span>` : ""}</td>
+            <td>${delta === 0 ? '<span class="delta delta--leader">Snelst</span>' : Number.isFinite(delta) ? `<span class="delta">+${fmtTimeDelta(delta).slice(1)}</span>` : ""}</td>
           </tr>`;
         }).join("")}</tbody>
       </table></div>`;
